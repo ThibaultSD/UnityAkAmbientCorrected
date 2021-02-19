@@ -1,9 +1,14 @@
-﻿﻿#if UNITY_EDITOR
+﻿#if UNITY_EDITOR
 //////////////////////////////////////////////////////////////////////
 //
 // Copyright (c) 2014 Audiokinetic Inc. / All Rights Reserved
-//
+// 19/01/2021 Thibault BEGIN (FRANCE): Corrected exception when parsing max attenuation for french Work Stations
 //////////////////////////////////////////////////////////////////////
+
+using System;
+using System.Globalization;
+using System.Xml;
+using UnityEngine;
 
 [UnityEditor.InitializeOnLoad]
 public class AkWwiseXMLBuilder
@@ -101,55 +106,70 @@ public class AkWwiseXMLBuilder
 
 	private static float GetFloatFromString(string s)
 	{
-		return string.Compare(s, "Infinite") == 0 ? UnityEngine.Mathf.Infinity : float.Parse(s);
+		return string.Compare(s, "Infinite") == 0 ? UnityEngine.Mathf.Infinity : float.Parse(s, CultureInfo.InvariantCulture.NumberFormat);
 	}
 
 	private static bool SerialiseEventData(System.Xml.XmlNode node)
 	{
-		var maxAttenuationAttribute = node.Attributes["MaxAttenuation"];
+        XmlAttribute maxAttenuationAttribute = node.Attributes["MaxAttenuation"];
 		var durationMinAttribute = node.Attributes["DurationMin"];
 		var durationMaxAttribute = node.Attributes["DurationMax"];
 		if (maxAttenuationAttribute == null && durationMinAttribute == null && durationMaxAttribute == null)
 			return false;
 
-		var bChanged = false;
+        
+        //Debug.LogWarning("Correction BUG Sphere Attenuation appliqué");
+
+        var bChanged = false;
 		var name = node.Attributes["Name"].InnerText;
 		foreach (var wwu in AkWwiseProjectInfo.GetData().EventWwu)
 		{
 			var eventData = wwu.Find(name);
 			if (eventData == null)
 				continue;
+            try
+            {
+                if (maxAttenuationAttribute != null)
+			    {
+                    string value = maxAttenuationAttribute.Value;
+                    string inner = maxAttenuationAttribute.InnerText;
+                    float maxAttenuation = 0.0f;
+                
+                         maxAttenuation = GetFloatFromString(maxAttenuationAttribute.Value);
+               
+              
+				    if (eventData.maxAttenuation != maxAttenuation)
+				    {
+					    eventData.maxAttenuation = maxAttenuation;
+					    bChanged = true;
+				    }
+			    }
 
-			if (maxAttenuationAttribute != null)
-			{
-				var maxAttenuation = float.Parse(maxAttenuationAttribute.InnerText);
-				if (eventData.maxAttenuation != maxAttenuation)
-				{
-					eventData.maxAttenuation = maxAttenuation;
-					bChanged = true;
-				}
-			}
+			    if (durationMinAttribute != null)
+			    {
+				    var minDuration = GetFloatFromString(durationMinAttribute.InnerText);
+				    if (eventData.minDuration != minDuration)
+				    {
+					    eventData.minDuration = minDuration;
+					    bChanged = true;
+				    }
+			    }
 
-			if (durationMinAttribute != null)
-			{
-				var minDuration = GetFloatFromString(durationMinAttribute.InnerText);
-				if (eventData.minDuration != minDuration)
-				{
-					eventData.minDuration = minDuration;
-					bChanged = true;
-				}
-			}
-
-			if (durationMaxAttribute != null)
-			{
-				var maxDuration = GetFloatFromString(durationMaxAttribute.InnerText);
-				if (eventData.maxDuration != maxDuration)
-				{
-					eventData.maxDuration = maxDuration;
-					bChanged = true;
-				}
-			}
-		}
+			    if (durationMaxAttribute != null)
+			    {
+				    var maxDuration = GetFloatFromString(durationMaxAttribute.InnerText);
+				    if (eventData.maxDuration != maxDuration)
+				    {
+					    eventData.maxDuration = maxDuration;
+					    bChanged = true;
+				    }
+			    }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError("AkWwiseXMLBuilder->SerialiseEventData:" + ex.Message);
+            }
+        }
 		
 		return bChanged;
 	}
